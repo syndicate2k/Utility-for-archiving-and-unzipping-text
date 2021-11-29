@@ -5,202 +5,143 @@
 #include <string>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <windows.h>
 
 using namespace std;
 
-/* 	
-	To do list:
-	1) Implement bor (2 algorithm)
-	2) Speed up the merge
-	3) Simplify functions
-	4) Russian localization	
-	5) Reading from file
-*/
+string string_for_code; // Строка для кодирования
+string string_for_decode; // Строка для декодирования
 
-string string_for_code;
-string string_for_decode;
+string get_new_index(); // Получение нового гнезда
+string file_name; // Имя файла
+string compression(string s); // Сжатие строки
+string decode(string s); // Декодирование
 
-map<string, int> dictionary;
-map<string, char> table_code;
-map<char, string> table_decode;
+map<string, int> dictionary; // Словарь
+map<string, string> table_code; // Таблица для кодирования
+map<string, string> table_decode; // Таблица для декодирования
 
-const int NMAX = 100;
-const int K = 36; 
+vector<int> transitions; // Вектор переходов на новую строку
 
-void init_bor();
-void add_string(const string &s);
-void merge_cells();
-void dictionary_create(string s);
-void table_create();
-void code_string_operation();
-void decode_string_operation();
-void panic();
-void menu_init();
+void dictionary_create(string s); // Создание словаря
+void table_create(); // Создание таблицы кодирования и декодирования
+void code_string_operation(); // Операция "Кодирование"
+void decode_string_operation(); // Операция "Декодирование"
+void panic(); // Выход
+void menu_init(); // Инициализация меню
+void merge(); // Укрепление подряд идущих гнезд
 
-string compression(string s);
-string decode(string s);
+int get_medium(); // Вычисление медианы частот
 
-int go(int v, char c);
+ifstream in; // Поток ввода
+ofstream out; // Поток вывода
 
-struct vertex {
-	int next[K];
-	bool leaf;
-	int p;
-	char pch;
-	int link;
-	int go[K];
-};
+HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE); // Дескриптор устройства вывода
 
-vertex t[NMAX+1];
-int sz;
+int last_i_digraph;
+int last_j_digraph;
 
-void init_bor() {
-	t[0].p = -1;
-	t[0].link = -1;
-	
-	memset (t[0].next, 255, sizeof t[0].next);
-	memset (t[0].go, 255, sizeof t[0].go);
-	
-	sz = 1;
-	
-	return;
-}
+bool error;
 
-void add_string (const string &s) {
-	int v = 0;
-	for (int i = 0; i < s.length(); i++) {
-		char c = s[i] - 'a';
-		if (t[v].next[c] == -1) {
-			memset (t[sz].next, 255, sizeof t[sz].next);
-			memset (t[sz].go, 255, sizeof t[sz].go);
-			
-			t[sz].link = -1;
-			t[sz].p = v;
-			t[sz].pch = c;
-			t[v].next[c] = sz++;
-		}
-		v = t[v].next[c];
-	}
-	t[v].leaf = true;
-	
-	return;
-}
+int get_medium() {
+	int sum = 0;
 
-int get_link (int v) {
-	if (t[v].link == -1)
-		if (v == 0 || t[v].p == 0)
-			t[v].link = 0;
-		else
-			t[v].link = go (get_link (t[v].p), t[v].pch);
-			
-	return t[v].link;
-}
+	map<string, int>::iterator it = dictionary.begin();
 
-int go (int v, char c) {
-	if (t[v].go[c] == -1)
-		if (t[v].next[c] != -1)
-			t[v].go[c] = t[v].next[c];
-		else{
-			if(v == 0) t[v].go[c] = 0;
-			else t[v].go[c] = go(get_link(v), c);
-		}
-		
-	return t[v].go[c];
-}
-
-void merge_cells() {
-	map<string, int>::iterator i, j;
-
-	i = dictionary.begin();
-	j = dictionary.begin();
-	j++;
-
-	if(j == dictionary.end() || i == dictionary.end()) return;
-
-	string s1, s2;
-	for(i; i != dictionary.end(); i++) {
-		s1 = (*i).first;
-		
-		if(s1 == "") continue;
-		for(j; j != dictionary.end(); j++) {
-			s2 = (*j).first;
-			
-			if(s2 == "") continue;
-			if(string_for_code.find(s1 + s2) != -1){
-				/*
-				map<string, int>::iterator ti = i, tj = j;
-				dictionary.erase(ti);
-				dictionary.erase(tj);
-				*/
-				
-				dictionary[s1 + s2]++;
-				
-				/*
-				i = dictionary.begin();
-				j = i;
-				j++;
-				*/
-			}else if(string_for_code.find(s2 + s1) != -1){
-				/*
-				map<string, int>::iterator ti = i, tj = j;
-				dictionary.erase(ti);
-				dictionary.erase(tj);
-				*/
-				
-				dictionary[s2 + s1]++;
-				
-				/*
-				i = dictionary.begin();
-				j = i;
-				j++;
-				*/
-			}
-		}
+	for(it; it != dictionary.end(); it++) {
+		sum += (*it).second;
 	}
 
-	return;
+	return sum / dictionary.size();
 }
 
 void dictionary_create(string s) {
-	string temp;
+	string match = "";
+	string last_match = "";
 
-	for(int l = 0; l < s.size(); l++) {
-		temp = "";
-		temp += s[l];
+	int count = 0;
+	int last_count = 0;
+	int i = 0;
+	int por = 2;
+	int med = 0;
 
-		if(dictionary[temp] > 0) {
-			string temp2 = "";
-			
-			for(int j = l + 1; j < s.size(); j++) {
-				temp2 = "";
-				temp2 += s[j];
-				
-				if(dictionary[temp2] > 0) {
-					temp += s[j];
-					dictionary[temp + temp2]++;
+	bool flag = 0;
+
+	while(true) {
+		if(!flag) {
+			i = 0;
+		} else {
+			flag = 0;
+		}
+
+		match = s[i];
+		i++;
+
+		while(i < s.size()) {
+			map<string, int>::iterator it = dictionary.lower_bound(match + s[i]);
+
+			if(it == dictionary.end()) {
+				break;
+			}
+
+			if((*it).first.size() < (match.size()) || ((*it).first.size() > (match.size() + 1) && (*it).first.substr(match.size() + 1) != (match + s[i]))) {
+				break;
+			}
+
+			match += s[i];
+			i++;
+		}
+
+		if(match.size() != 1) {
+			count = ++dictionary[match];
+		} else {
+			match = s[i];
+			dictionary[match] = 1;
+		}
+
+		if(count >= por && last_count >= por) {
+			i += match.size() - 1;
+			flag = 1;
+
+			last_match = match;
+			last_count = count;
+		} else {
+			dictionary[last_match + match]++;
+
+			s = s.substr(last_match.size() + match.size() , s.size() - (last_match.size() + match.size()));
+
+			last_match = "";
+			last_count = 0;
+		}
+
+		med = get_medium();
+
+		if(dictionary.size() >= 40) {
+			map<string, int> newdictionary;
+			map<string, int>::iterator it = dictionary.begin();
+
+			for(it; it != dictionary.end(); it++) {
+				if((*it).second >= med) {
+					newdictionary[(*it).first] = (*it).second;
 				} else {
-					break;
+					size_t pos = s.find((*it).first);
+
+					if (pos == string::npos) {
+						last_count = 0;
+						last_match = "";
+					}
 				}
 			}
 
-			dictionary[temp]++;
-			l += temp.size() - 1;
-		} else {
-			dictionary[temp]++;
-			continue;
+			dictionary = newdictionary;
+		}
+
+		if(s == "") {
+			break;
 		}
 	}
-	
-	merge_cells();
 
-	/*
-	map<string, int>::iterator it = dictionary.begin();
-	cout << endl;
-	for(it; it != dictionary.end(); it++) {
-		cout << (*it).first << " " << (*it).second << endl;
-	}
-	*/
-	
 	return;
 }
 
@@ -211,16 +152,31 @@ void table_create() {
 
 	it = dictionary.begin();
 
-	cout << endl << "Code table: " << endl;
-	
-	for(int i = 'a'; i <= ('a' + dictionary.size()) && it != dictionary.end(); i++) {
-		table_code[(*it).first] = (char)i;
-		table_decode[(char)i] = (*it).first;
+	for(int i = '!'; i <= '~' && it != dictionary.end(); i++) {
+		last_i_digraph = i;
 
-		cout << (*it).first << " -> " << table_code[(*it).first] << endl;
-		it++;
+		for(int j = '!'; j <= '~' && it != dictionary.end(); j++) {
+			if(i == j) {
+				continue;
+			}
+
+			if(dictionary[(*it).first] > 0) {
+				string index = "";
+				index += (char)i;
+				index += (char)j;
+
+				table_code[(*it).first] = index;
+				table_decode[index] = (*it).first;
+
+				it++;
+			} else {
+				it++;
+				i--;
+			}
+
+			last_j_digraph = j;
+		}
 	}
-
 	return;
 }
 
@@ -250,43 +206,246 @@ string compression(string s) {
 }
 
 void code_string_operation() {
-	cout << "Input your string" << endl;
-
 	fflush(stdin);
 	fflush(stdout);
 
-	getline(cin, string_for_code);
+	cout << "Enter file name" << endl;
+
+	getline(cin, file_name);
+
+	file_name += ".txt";
+
+	in.open(file_name);
+	out.open("output.txt");
+
+	if(!in.is_open()) {
+		SetConsoleTextAttribute(hConsole, 77);
+		cout << "An error has occurred!" << endl;
+
+		SetConsoleTextAttribute(hConsole, 15);
+
+		error = true;
+
+		return;
+	}
+
+	string temp_input;
+	while(getline(in, temp_input)) {
+		string_for_code += temp_input;
+		transitions.push_back(string_for_code.size() - 1);
+	}
+
+	if(string_for_code == "") {
+		return;
+	}
 
 	dictionary_create(string_for_code);
 	table_create();
 
 	string result = compression(string_for_code);
-	cout << "Result of compression: " << result << endl;
-	cout << "Source string length:" << string_for_code.size() << " & Result string length: " << result.size() << endl;
+	string_for_decode = result;
+	merge();
 
+	cout << "Result of compression: " << string_for_decode << endl;
+	cout << "Source string length:" << string_for_code.size() << " & Result string length: " << string_for_decode.size() << endl;
+
+	out << "Encoded text:";
+	out << string_for_decode;
+
+	cout << endl << "Line break indexes in source text:";
+	out << endl << "Line break indexes in source text:";
+
+	for(int i = 0; i < transitions.size(); i++) {
+		cout << transitions[i] << " ";
+		out << transitions[i] << " ";
+	}
+
+	cout << endl;
+
+	in.close();
+	out.close();
 }
 
 string decode(string s) {
 	string source = "";
 
-	for(int i = 0; i < s.size(); i++) {
-		source += table_decode[s[i]];
+	for(int i = 0; i + 1 < s.size(); i++) {
+		string index = "";
+
+		index += s[i];
+		index += s[i + 1];
+
+		source += table_decode[index];
 	}
 
 	return source;
 }
 
 void decode_string_operation() {
-
-	cout << "Input your string for decode" << endl;
 	fflush(stdin);
 	fflush(stdout);
 
-	getline(cin, string_for_decode);
+	if(error) {
+		return;
+	}
 
 	string result = decode(string_for_decode);
-	cout << "Result of decoding: " << result << endl;
 
+	SetConsoleTextAttribute(hConsole, 77);
+	cout << endl << "CHECK" << endl;
+
+	SetConsoleTextAttribute(hConsole, 15);
+	cout << "Result of decoding:" << endl;
+
+	int pos_endl = 0;
+	for(int i = 0; i < result.size(); i++) {
+		cout << result[i];
+
+		if(i == transitions[pos_endl]) {
+			cout << endl;
+			pos_endl++;
+		}
+	}
+}
+
+string get_new_index() {
+	if(last_j_digraph < 127) {
+		last_j_digraph++;
+	} else {
+		last_i_digraph++;
+	}
+
+	string new_index = "";
+	new_index += (char)last_i_digraph;
+	new_index += (char)last_j_digraph;
+
+	return new_index;
+}
+
+void merge() {
+	string initial_string = string_for_decode;
+
+	vector<string> temp;
+
+	string for_pb = "";
+	for_pb += initial_string[0];
+	for_pb += initial_string[1];
+
+	temp.push_back(for_pb);
+
+	int k = 1;
+	for(int i = 2; i + 1 < initial_string.size(); i += 2) {
+		for_pb = "";
+
+		for_pb += initial_string[i];
+		for_pb += initial_string[i + 1];
+
+		if(temp[temp.size() - 1] == (for_pb)) {
+			k++;
+		} else {
+			if(k > 1) {
+				string new_item = "";
+
+				for(int j = 0; j < k; j++) {
+					new_item += temp[temp.size() - 1];
+				}
+
+				string new_index = get_new_index();
+
+				table_code[decode(new_item)] = new_index;
+				table_decode[new_index] = decode(new_item);
+
+				temp.pop_back();
+				temp.push_back(new_index);
+
+			}
+			k = 1;
+
+			temp.push_back(for_pb);
+		}
+	}
+
+	string result_of_merge = "";
+
+	for(int i = 0; i + 1 < temp.size(); i += 2) {
+		string new_item = "";
+
+		new_item += temp[i];
+		new_item += temp[i + 1];
+
+
+		string new_index = get_new_index();
+
+		table_code[decode(new_item)] = new_index;
+		table_decode[new_index] = decode(new_item);
+
+		result_of_merge += new_index;
+	}
+
+	cout << endl << "Code table: " << endl;
+	out << endl << "Code table: " << endl;
+
+	map<string, string>:: iterator itt = table_decode.begin();
+	for(itt; itt != table_decode.end(); itt++) {
+		cout << (*itt).first << " -> " << (*itt).second << endl;
+		out << (*itt).first << " -> " << (*itt).second << endl;
+	}
+	cout << endl;
+
+	string_for_decode = result_of_merge;
+}
+
+void decode_selected() {
+	table_code.clear();
+	table_decode.clear();
+	transitions.clear();
+
+	cout << "Enter the length of the dictionary" << endl;
+
+	int dictionary_length;
+	cin >> dictionary_length;
+
+	cout << "Enter the dictionary in the format: 'string' -> 'digraph' " << endl;
+
+	string s1_input, s2_input;
+	for(int i = 0; i < dictionary_length; i++) {
+		cin >> s1_input >> s2_input;
+
+		table_code[s1_input] = s2_input;
+		table_decode[s2_input] = s1_input;
+	}
+
+	cout << "Enter the encoded string" << endl;
+	cin >> string_for_decode;
+
+	cout << "Enter size and transitions array" << endl;
+
+	int transitions_size;
+	cin >> transitions_size;
+
+	int temp_ind;
+	for(int i = 0; i < transitions.size(); i++) {
+		cin >> temp_ind;
+
+		transitions.push_back(temp_ind);
+	}
+
+	string result = decode(string_for_decode);
+
+	SetConsoleTextAttribute(hConsole, 40);
+	cout << "Source string: " << endl;
+
+	SetConsoleTextAttribute(hConsole, 15);
+
+	int pos_endl = 0;
+	for(int i = 0; i < result.size(); i++) {
+		cout << result[i];
+
+		if(transitions.size() > 0 && i == transitions[pos_endl]) {
+			cout << endl;
+			pos_endl++;
+		}
+	}
 }
 
 void panic() {
@@ -295,13 +454,13 @@ void panic() {
 }
 
 void menu_init() {
-	cout << "[ String code/decode utility ] " << endl;
-	cout << endl << endl << endl;
+	SetConsoleTextAttribute(hConsole, 15);
 
+	cout << endl << endl;
 	cout << "What do u want to do?" << endl;
 	cout << "1. I want CODE string" << endl;
-	cout << "2. I want DECODE string (NEED FIX)" << endl;
-	cout << "3. I want EXIT" << endl << endl << endl;
+	cout << "2. I want DECODE string" << endl;
+	cout << "3. I want EXIT" << endl;
 
 	int operation;
 	while(1) {
@@ -310,18 +469,24 @@ void menu_init() {
 		switch(operation) {
 			case 1:
 				code_string_operation();
-				decode_string_operation(); // used for test
+				decode_string_operation();
+				break;
 			case 2:
-				decode_string_operation(); // don't use 2 operation!
+				decode_selected();
+				break;
 			case 3:
 				panic();
+				break;
 		}
+		menu_init();
 	}
 }
 
 int main() {
-	// setlocale(LC_ALL, "Russian");
-	
+	setlocale(LC_ALL, "Russian");
+
+	SetConsoleTextAttribute(hConsole, 40);
+	cout << " String encoding utility " << endl << endl << endl << endl;
+
 	menu_init();
 }
-
